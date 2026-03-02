@@ -11,11 +11,19 @@ $status = (string)($form['status'] ?? 'new');
 $priority = (string)($form['priority'] ?? 'normal');
 $assignedTo = (string)($form['assigned_to_user_id'] ?? '');
 $dueDate = (string)($form['due_date'] ?? '');
+
+$auditUrl = APP_BASE_PATH . '/audit?entity_type=task&entity_id=' . (int)$taskId;
 ?>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
-  <h1 class="h3 mb-0">Edit Task #<?= (int)$taskId ?></h1>
-  <a class="btn btn-outline-secondary" href="<?= APP_BASE_PATH ?>/tasks">Back</a>
+  <div>
+    <h1 class="h3 mb-1">Edit Task #<?= (int)$taskId ?></h1>
+    <a class="small" href="<?= h($auditUrl) ?>">View audit for this task</a>
+  </div>
+
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="<?= APP_BASE_PATH ?>/tasks">Back</a>
+  </div>
 </div>
 
 <?php if (!empty($error)): ?>
