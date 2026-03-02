@@ -76,7 +76,7 @@ $auditUrl = APP_BASE_PATH . '/audit?entity_type=task&entity_id=' . (int)$taskId;
         <option value="">Unassigned</option>
         <?php foreach ($users as $u): ?>
           <option value="<?= (int)$u['user_id'] ?>" <?= $assignedTo !== '' && (int)$assignedTo === (int)$u['user_id'] ? 'selected' : '' ?>>
-            <?= h((string)$u['display_name']) ?>
+            <?= h((string)$u['display_name']) ?><?= ((int)($u['is_active'] ?? 1) === 1) ? '' : ' (disabled)' ?>
           </option>
         <?php endforeach; ?>
       </select>

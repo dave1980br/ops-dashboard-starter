@@ -16,7 +16,6 @@ final class TasksController
 
     private function audit(string $entityType, int $entityId, string $action, array $details = []): void
     {
-        // Best-effort auditing: never break the request if audit insert fails.
         try {
             $pdo = Db::pdo();
             $stmt = $pdo->prepare("
@@ -31,8 +30,22 @@ final class TasksController
                 $details ? json_encode($details, JSON_UNESCAPED_SLASHES) : null,
             ]);
         } catch (Throwable $e) {
-            // swallow
+            // best-effort; never break the request
         }
+    }
+
+    private function getAssignableUsers(): array
+    {
+        // IMPORTANT: include inactive users so assigned tasks render correctly in edit dropdown,
+        // but still keep login restricted via AuthController (is_active = 1).
+        $pdo = Db::pdo();
+        return $pdo->query("
+            SELECT user_id, display_name, email, is_active
+            FROM users
+            ORDER BY
+              CASE role WHEN 'admin' THEN 0 ELSE 1 END,
+              display_name ASC
+        ")->fetchAll();
     }
 
     private function buildFiltersFromGet(): array
@@ -68,13 +81,11 @@ final class TasksController
     public function index(): void
     {
         $pdo = Db::pdo();
-
         [$status, $priority, $q, $whereSql, $params] = $this->buildFiltersFromGet();
 
         $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
         if ($page < 1) $page = 1;
 
-        // Count for pagination
         $stmtCount = $pdo->prepare("SELECT COUNT(*) FROM tasks t {$whereSql}");
         $stmtCount->execute($params);
         $total = (int)$stmtCount->fetchColumn();
@@ -138,10 +149,8 @@ final class TasksController
     public function exportCsv(): void
     {
         $pdo = Db::pdo();
-
         [$status, $priority, $q, $whereSql, $params] = $this->buildFiltersFromGet();
 
-        // Pull a reasonable cap for demo safety
         $sql = "
             SELECT
                 t.task_id,
@@ -196,8 +205,7 @@ final class TasksController
 
     public function create(): void
     {
-        $pdo = Db::pdo();
-        $users = $pdo->query("SELECT user_id, display_name FROM users WHERE is_active = 1 ORDER BY display_name ASC")->fetchAll();
+        $users = $this->getAssignableUsers();
 
         View::render('tasks/create', [
             'user' => Auth::user(),
@@ -232,7 +240,7 @@ final class TasksController
         $dueDate = trim((string)($_POST['due_date'] ?? ''));
 
         if ($title === '') {
-            $users = $pdo->query("SELECT user_id, display_name FROM users WHERE is_active = 1 ORDER BY display_name ASC")->fetchAll();
+            $users = $this->getAssignableUsers();
             View::render('tasks/create', [
                 'user' => Auth::user(),
                 'csrf' => Csrf::token(),
@@ -309,7 +317,7 @@ final class TasksController
             Response::redirect('/tasks?msg=notfound');
         }
 
-        $users = $pdo->query("SELECT user_id, display_name FROM users WHERE is_active = 1 ORDER BY display_name ASC")->fetchAll();
+        $users = $this->getAssignableUsers();
 
         View::render('tasks/edit', [
             'user' => Auth::user(),
@@ -353,8 +361,7 @@ final class TasksController
         $dueDate = trim((string)($_POST['due_date'] ?? ''));
 
         if ($title === '') {
-            $users = $pdo->query("SELECT user_id, display_name FROM users WHERE is_active = 1 ORDER BY display_name ASC")->fetchAll();
-
+            $users = $this->getAssignableUsers();
             View::render('tasks/edit', [
                 'user' => Auth::user(),
                 'csrf' => Csrf::token(),
@@ -436,7 +443,6 @@ final class TasksController
             Response::redirect('/tasks?msg=notfound');
         }
 
-        // Capture a few fields for audit before deletion
         $stmtOld = $pdo->prepare("SELECT title,status,priority FROM tasks WHERE task_id = ? LIMIT 1");
         $stmtOld->execute([$id]);
         $old = $stmtOld->fetch();
@@ -483,7 +489,6 @@ final class TasksController
             $stmt = $pdo->prepare("UPDATE tasks SET status = ?, updated_at = NOW() WHERE task_id IN ({$placeholders})");
             $stmt->execute($params);
 
-            // Audit one row for the bulk action (not per-task, for demo simplicity)
             $this->audit('task', 0, 'bulk_status', [
                 'task_ids' => $taskIds,
                 'new_status' => $newStatus,
